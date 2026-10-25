@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[36,)"
+license="MIT"
+
+[[mods]]
+modId="avatarlink"
+version="${file.jarVersion}"
+displayName="Avatar Link"
+description='''
+Вселение в мобов через капсулу связи, как в фильме «Аватар».
+'''
+
+[[dependencies.avatarlink]]
+    modId="forge"
+    mandatory=true
+    versionRange="[36,)"
+    ordering="NONE"
+    side="BOTH"
+
+[[dependencies.avatarlink]]
+    modId="minecraft"
+    mandatory=true
+    versionRange="[1.16.5,1.17)"
+    ordering="NONE"
+    side="BOTH"

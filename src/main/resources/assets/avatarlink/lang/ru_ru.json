@@ -1,0 +1,15 @@
+{
+  "block.avatarlink.link_pod": "Капсула связи",
+  "item.avatarlink.sedative": "Усыпитель",
+  "key.categories.avatarlink": "Avatar Link",
+  "key.avatarlink.ability": "Способность аватара",
+  "key.avatarlink.exit": "Выйти из аватара",
+  "message.avatarlink.prepared": "Моб усыплён и привязан к вам",
+  "message.avatarlink.already_prepared": "Этот моб уже подготовлен",
+  "message.avatarlink.no_mob": "В 32 блоках от капсулы нет вашего подготовленного моба",
+  "message.avatarlink.busy": "В этого моба уже вселён другой игрок",
+  "message.avatarlink.linked": "Связь установлена. R - способность, V - выйти",
+  "message.avatarlink.unlinked": "Связь прервана",
+  "message.avatarlink.lost": "Связь потеряна: аватар погиб или исчез",
+  "message.avatarlink.pod_lost": "Связь потеряна: капсула разрушена"
+}

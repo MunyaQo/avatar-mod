@@ -1,0 +1,15 @@
+{
+  "block.avatarlink.link_pod": "Link Pod",
+  "item.avatarlink.sedative": "Sedative",
+  "key.categories.avatarlink": "Avatar Link",
+  "key.avatarlink.ability": "Avatar ability",
+  "key.avatarlink.exit": "Leave avatar",
+  "message.avatarlink.prepared": "The mob is sedated and bound to you",
+  "message.avatarlink.already_prepared": "This mob is already prepared",
+  "message.avatarlink.no_mob": "No prepared mob of yours within 32 blocks of the pod",
+  "message.avatarlink.busy": "Another player is already linked to this mob",
+  "message.avatarlink.linked": "Link established. R - ability, V - leave",
+  "message.avatarlink.unlinked": "Link ended",
+  "message.avatarlink.lost": "Link lost: the avatar died or vanished",
+  "message.avatarlink.pod_lost": "Link lost: the pod was destroyed"
+}
