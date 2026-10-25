@@ -8,7 +8,7 @@
   "message.avatarlink.already_prepared": "Этот моб уже подготовлен",
   "message.avatarlink.no_mob": "В 32 блоках от капсулы нет вашего подготовленного моба",
   "message.avatarlink.busy": "В этого моба уже вселён другой игрок",
-  "message.avatarlink.linked": "Связь установлена. R - способность, V - выйти",
+  "message.avatarlink.linked": "Связь установлена. ЛКМ - атака, R - способность, V - выйти",
   "message.avatarlink.unlinked": "Связь прервана",
   "message.avatarlink.lost": "Связь потеряна: аватар погиб или исчез",
   "message.avatarlink.pod_lost": "Связь потеряна: капсула разрушена"

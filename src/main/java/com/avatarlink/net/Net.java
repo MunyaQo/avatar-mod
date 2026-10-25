@@ -29,6 +29,7 @@ public final class Net {
         int id = 0;
         CHANNEL.registerMessage(id++, InputPacket.class, InputPacket::encode, InputPacket::decode, InputPacket::handle);
         CHANNEL.registerMessage(id++, AbilityPacket.class, AbilityPacket::encode, AbilityPacket::decode, AbilityPacket::handle);
+        CHANNEL.registerMessage(id++, PrimaryPacket.class, PrimaryPacket::encode, PrimaryPacket::decode, PrimaryPacket::handle);
         CHANNEL.registerMessage(id++, ExitPacket.class, ExitPacket::encode, ExitPacket::decode, ExitPacket::handle);
         CHANNEL.registerMessage(id++, LinkStatePacket.class, LinkStatePacket::encode, LinkStatePacket::decode, LinkStatePacket::handle);
     }
@@ -77,7 +78,28 @@ public final class Net {
         }
     }
 
-    /** Клиент -> сервер: нажата клавиша способности. */
+    /** Клиент -> сервер: левая кнопка мыши (основная атака аватара). */
+    public static final class PrimaryPacket {
+        static void encode(PrimaryPacket m, PacketBuffer b) {
+        }
+
+        static PrimaryPacket decode(PacketBuffer b) {
+            return new PrimaryPacket();
+        }
+
+        static void handle(PrimaryPacket m, Supplier<NetworkEvent.Context> ctx) {
+            NetworkEvent.Context c = ctx.get();
+            c.enqueueWork(() -> {
+                ServerPlayerEntity sender = c.getSender();
+                if (sender != null) {
+                    LinkManager.usePrimary(sender);
+                }
+            });
+            c.setPacketHandled(true);
+        }
+    }
+
+    /** Клиент -> сервер: нажата клавиша особой способности (R). */
     public static final class AbilityPacket {
         static void encode(AbilityPacket m, PacketBuffer b) {
         }

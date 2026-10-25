@@ -4,11 +4,11 @@ import com.avatarlink.AvatarLinkMod;
 import com.avatarlink.block.LinkPodBlock;
 import com.avatarlink.net.Net;
 import java.util.Comparator;
-import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.MobEntity;
 import net.minecraft.entity.MoverType;
@@ -43,7 +43,10 @@ import net.minecraft.world.GameRules;
 import net.minecraft.world.World;
 import net.minecraft.world.server.ServerWorld;
 import net.minecraftforge.event.TickEvent;
+import net.minecraftforge.event.entity.player.AttackEntityEvent;
 import net.minecraftforge.event.entity.player.PlayerEvent;
+import net.minecraftforge.event.entity.player.PlayerInteractEvent;
+import net.minecraftforge.event.world.BlockEvent;
 import net.minecraftforge.eventbus.api.SubscribeEvent;
 import net.minecraftforge.fml.common.Mod;
 import net.minecraftforge.fml.event.server.FMLServerStoppedEvent;
@@ -58,7 +61,7 @@ public final class LinkManager {
     private static final double SEARCH_RADIUS = 32.0D;
 
     /** Активные связи: игрок -> состояние связи. */
-    private static final Map<UUID, Link> LINKS = new HashMap<>();
+    private static final Map<UUID, Link> LINKS = new ConcurrentHashMap<>();
 
     private LinkManager() {
     }
@@ -72,7 +75,13 @@ public final class LinkManager {
         float yaw;
         float pitch;
         double vy;
-        int cooldown;
+        int cooldown;          // кулдаун особой способности (R)
+        int primaryCooldown;   // кулдаун основной атаки (левая кнопка)
+        int boostTicks;        // ярость зомби
+        int leapTicks;         // прыжок паука
+        boolean leapLaunch;
+        double leapX;
+        double leapZ;
 
         Link(UUID mob, BlockPos pod, float yaw, float pitch) {
             this.mob = mob;
@@ -113,6 +122,10 @@ public final class LinkManager {
     }
 
     // ---------------------------------------------------------------- вселение
+
+    public static boolean isLinked(PlayerEntity player) {
+        return LINKS.containsKey(player.getUUID());
+    }
 
     public static void tryStart(ServerPlayerEntity player, ServerWorld world, BlockPos pod) {
         if (LINKS.containsKey(player.getUUID())) {
@@ -238,6 +251,50 @@ public final class LinkManager {
         LINKS.clear();
     }
 
+    // Пока игрок в аватаре, его настоящее тело ни с чем не взаимодействует.
+
+    @SubscribeEvent
+    public static void onLeftClickBlock(PlayerInteractEvent.LeftClickBlock event) {
+        if (isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
+        if (isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onRightClickItem(PlayerInteractEvent.RightClickItem event) {
+        if (isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
+        if (isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onAttackEntity(AttackEntityEvent event) {
+        if (isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
+    @SubscribeEvent
+    public static void onBreakBlock(BlockEvent.BreakEvent event) {
+        if (event.getPlayer() != null && isLinked(event.getPlayer())) {
+            event.setCanceled(true);
+        }
+    }
+
     // ---------------------------------------------------------------- управление мобом
 
     private static double speedFor(MobEntity mob) {
@@ -260,6 +317,10 @@ public final class LinkManager {
         mob.yBodyRot = l.yaw;
 
         double speed = speedFor(mob);
+        if (l.boostTicks > 0) {
+            speed *= 1.6D;
+            l.boostTicks--;
+        }
         float rad = l.yaw * ((float) Math.PI / 180.0F);
         double sin = Math.sin(rad);
         double cos = Math.cos(rad);
@@ -272,6 +333,12 @@ public final class LinkManager {
         }
         mx *= speed;
         mz *= speed;
+
+        if (l.leapTicks > 0) {
+            mx = l.leapX;
+            mz = l.leapZ;
+            l.leapTicks--;
+        }
 
         boolean wantsToMove = l.forward != 0.0F || l.strafe != 0.0F;
         boolean climbing = mob instanceof SpiderEntity && mob.horizontalCollision && wantsToMove;
@@ -287,6 +354,10 @@ public final class LinkManager {
         } else {
             l.vy = (l.vy - 0.08D) * 0.98D;
         }
+        if (l.leapLaunch) {
+            l.vy = 0.55D;
+            l.leapLaunch = false;
+        }
 
         mob.move(MoverType.SELF, new Vector3d(mx, l.vy, mz));
         if (mob.verticalCollision && l.vy > 0.0D) {
@@ -297,30 +368,64 @@ public final class LinkManager {
         if (l.cooldown > 0) {
             l.cooldown--;
         }
+        if (l.primaryCooldown > 0) {
+            l.primaryCooldown--;
+        }
     }
 
-    // ---------------------------------------------------------------- способности
+    // ---------------------------------------------------------------- основная атака (левая кнопка)
+
+    public static void usePrimary(ServerPlayerEntity player) {
+        Link l = LINKS.get(player.getUUID());
+        if (l == null || l.primaryCooldown > 0) {
+            return;
+        }
+        MobEntity mob = findMob(player, l);
+        if (mob == null) {
+            return;
+        }
+        if (mob instanceof SpiderEntity) {
+            melee(mob, player, 2.0F);
+            l.primaryCooldown = 10;
+        } else if (mob instanceof ZombieEntity) {
+            melee(mob, player, 3.0F);
+            l.primaryCooldown = 10;
+        } else if (mob instanceof AbstractSkeletonEntity) {
+            shootArrow(mob);
+            l.primaryCooldown = 20;
+        }
+    }
+
+    // ---------------------------------------------------------------- особые способности (R)
 
     public static void useAbility(ServerPlayerEntity player) {
         Link l = LINKS.get(player.getUUID());
         if (l == null || l.cooldown > 0) {
             return;
         }
-        Entity entity = ((ServerWorld) player.level).getEntity(l.mob);
-        if (!(entity instanceof MobEntity)) {
+        MobEntity mob = findMob(player, l);
+        if (mob == null) {
             return;
         }
-        MobEntity mob = (MobEntity) entity;
-
         if (mob instanceof SpiderEntity) {
-            melee(mob, player, 2.0F);
-            l.cooldown = 10;
+            if (mob.isOnGround()) {
+                float rad = l.yaw * ((float) Math.PI / 180.0F);
+                l.leapX = -Math.sin(rad) * 0.6D;
+                l.leapZ = Math.cos(rad) * 0.6D;
+                l.leapTicks = 10;
+                l.leapLaunch = true;
+                l.cooldown = 60;
+                mob.level.playSound(null, mob.blockPosition(), SoundEvents.SPIDER_AMBIENT, SoundCategory.HOSTILE, 1.0F, 1.2F);
+            }
         } else if (mob instanceof ZombieEntity) {
-            melee(mob, player, 3.0F);
-            l.cooldown = 10;
-        } else if (mob instanceof AbstractSkeletonEntity) {
-            shootArrow(mob);
-            l.cooldown = 20;
+            l.boostTicks = 100;
+            l.cooldown = 300;
+            mob.level.playSound(null, mob.blockPosition(), SoundEvents.ZOMBIE_AMBIENT, SoundCategory.HOSTILE, 1.0F, 0.6F);
+            if (mob.level instanceof ServerWorld) {
+                ((ServerWorld) mob.level).sendParticles(ParticleTypes.ANGRY_VILLAGER,
+                        mob.getX(), mob.getY() + mob.getBbHeight(), mob.getZ(),
+                        8, 0.4D, 0.3D, 0.4D, 0.02D);
+            }
         } else if (mob instanceof CreeperEntity) {
             explode(mob);
             l.cooldown = 80;
@@ -328,6 +433,11 @@ public final class LinkManager {
             teleport(mob);
             l.cooldown = 20;
         }
+    }
+
+    private static MobEntity findMob(ServerPlayerEntity player, Link l) {
+        Entity entity = ((ServerWorld) player.level).getEntity(l.mob);
+        return entity instanceof MobEntity ? (MobEntity) entity : null;
     }
 
     private static void melee(MobEntity mob, PlayerEntity controller, float damage) {
