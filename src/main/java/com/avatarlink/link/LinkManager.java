@@ -9,6 +9,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import net.minecraft.block.BlockState;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.MobEntity;
 import net.minecraft.entity.MoverType;
@@ -59,6 +60,7 @@ import net.minecraftforge.fml.server.ServerLifecycleHooks;
 public final class LinkManager {
     private static final String OWNER_TAG = "avatarlink_owner";
     private static final double SEARCH_RADIUS = 32.0D;
+    private static final int RAGE_TICKS = 100;
 
     /** Активные связи: игрок -> состояние связи. */
     private static final Map<UUID, Link> LINKS = new ConcurrentHashMap<>();
@@ -78,10 +80,11 @@ public final class LinkManager {
         int cooldown;          // кулдаун особой способности (R)
         int primaryCooldown;   // кулдаун основной атаки (левая кнопка)
         int boostTicks;        // ярость зомби
-        int leapTicks;         // прыжок паука
+        int leapTicks;         // рывок (прыжок паука, отскок скелета)
         boolean leapLaunch;
         double leapX;
         double leapZ;
+        double leapVy;
 
         Link(UUID mob, BlockPos pod, float yaw, float pitch) {
             this.mob = mob;
@@ -156,8 +159,15 @@ public final class LinkManager {
             player.displayClientMessage(new TranslationTextComponent("message.avatarlink.busy"), true);
             return;
         }
+
+        BlockState podState = world.getBlockState(pod);
+        BlockPos head = LinkPodBlock.headPos(podState, pod);
+        // Тело игрока ложится в капсулу, крышка закрывается.
+        player.connection.teleport(head.getX() + 0.5D, head.getY() + 0.375D, head.getZ() + 0.5D, player.yRot, player.xRot);
+        LinkPodBlock.setOpen(world, pod, false);
+
         LINKS.put(player.getUUID(), new Link(mob.getUUID(), pod, mob.yRot, mob.xRot));
-        Net.sendLinkState(player, mob.getId());
+        Net.sendLinkState(player, mob.getId(), head);
         player.displayClientMessage(new TranslationTextComponent("message.avatarlink.linked"), true);
     }
 
@@ -172,13 +182,19 @@ public final class LinkManager {
 
     /** Выход из аватара по желанию игрока (без штрафа). */
     public static void stop(ServerPlayerEntity player) {
-        if (LINKS.remove(player.getUUID()) != null) {
-            notifyEnd(player, "message.avatarlink.unlinked");
+        Link link = LINKS.remove(player.getUUID());
+        if (link != null) {
+            finish(player, link, "message.avatarlink.unlinked");
         }
     }
 
-    private static void notifyEnd(ServerPlayerEntity player, String messageKey) {
-        Net.sendLinkState(player, -1);
+    /** Общее завершение связи: открыть крышку, убрать значки, сообщить клиенту. */
+    private static void finish(ServerPlayerEntity player, Link link, String messageKey) {
+        if (player.level instanceof ServerWorld) {
+            LinkPodBlock.setOpen((ServerWorld) player.level, link.pod, true);
+        }
+        player.removeEffect(Effects.DAMAGE_BOOST);
+        Net.sendLinkState(player, -1, BlockPos.ZERO);
         if (messageKey != null) {
             player.displayClientMessage(new TranslationTextComponent(messageKey), true);
         }
@@ -222,19 +238,19 @@ public final class LinkManager {
             }
             if (!player.isAlive()) {
                 it.remove();
-                notifyEnd(player, null);
+                finish(player, link, null);
                 continue;
             }
             ServerWorld world = (ServerWorld) player.level;
             Entity entity = world.getEntity(link.mob);
             if (!(entity instanceof MobEntity) || !entity.isAlive()) {
                 it.remove();
-                notifyEnd(player, "message.avatarlink.lost");
+                finish(player, link, "message.avatarlink.lost");
                 continue;
             }
             if (!(world.getBlockState(link.pod).getBlock() instanceof LinkPodBlock)) {
                 it.remove();
-                notifyEnd(player, "message.avatarlink.pod_lost");
+                finish(player, link, "message.avatarlink.pod_lost");
                 continue;
             }
             drive((MobEntity) entity, link);
@@ -243,7 +259,10 @@ public final class LinkManager {
 
     @SubscribeEvent
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        LINKS.remove(event.getPlayer().getUUID());
+        Link link = LINKS.remove(event.getPlayer().getUUID());
+        if (link != null && event.getPlayer().level instanceof ServerWorld) {
+            LinkPodBlock.setOpen((ServerWorld) event.getPlayer().level, link.pod, true);
+        }
     }
 
     @SubscribeEvent
@@ -318,7 +337,7 @@ public final class LinkManager {
 
         double speed = speedFor(mob);
         if (l.boostTicks > 0) {
-            speed *= 1.6D;
+            speed *= 1.5D;
             l.boostTicks--;
         }
         float rad = l.yaw * ((float) Math.PI / 180.0F);
@@ -355,7 +374,7 @@ public final class LinkManager {
             l.vy = (l.vy - 0.08D) * 0.98D;
         }
         if (l.leapLaunch) {
-            l.vy = 0.55D;
+            l.vy = l.leapVy;
             l.leapLaunch = false;
         }
 
@@ -388,7 +407,7 @@ public final class LinkManager {
             melee(mob, player, 2.0F);
             l.primaryCooldown = 10;
         } else if (mob instanceof ZombieEntity) {
-            melee(mob, player, 3.0F);
+            melee(mob, player, l.boostTicks > 0 ? 5.0F : 3.0F);
             l.primaryCooldown = 10;
         } else if (mob instanceof AbstractSkeletonEntity) {
             shootArrow(mob);
@@ -407,24 +426,39 @@ public final class LinkManager {
         if (mob == null) {
             return;
         }
+        float rad = l.yaw * ((float) Math.PI / 180.0F);
         if (mob instanceof SpiderEntity) {
+            // Прыжок вперёд
             if (mob.isOnGround()) {
-                float rad = l.yaw * ((float) Math.PI / 180.0F);
                 l.leapX = -Math.sin(rad) * 0.6D;
                 l.leapZ = Math.cos(rad) * 0.6D;
                 l.leapTicks = 10;
+                l.leapVy = 0.55D;
                 l.leapLaunch = true;
                 l.cooldown = 60;
                 mob.level.playSound(null, mob.blockPosition(), SoundEvents.SPIDER_AMBIENT, SoundCategory.HOSTILE, 1.0F, 1.2F);
             }
         } else if (mob instanceof ZombieEntity) {
-            l.boostTicks = 100;
+            // Ярость: бег быстрее на 50%, удар сильнее, значок эффекта и красные края экрана
+            l.boostTicks = RAGE_TICKS;
             l.cooldown = 300;
-            mob.level.playSound(null, mob.blockPosition(), SoundEvents.ZOMBIE_AMBIENT, SoundCategory.HOSTILE, 1.0F, 0.6F);
+            player.addEffect(new EffectInstance(Effects.DAMAGE_BOOST, RAGE_TICKS, 0, false, false, true));
+            mob.level.playSound(null, mob.blockPosition(), SoundEvents.RAVAGER_ROAR, SoundCategory.HOSTILE, 1.0F, 1.1F);
             if (mob.level instanceof ServerWorld) {
                 ((ServerWorld) mob.level).sendParticles(ParticleTypes.ANGRY_VILLAGER,
                         mob.getX(), mob.getY() + mob.getBbHeight(), mob.getZ(),
                         8, 0.4D, 0.3D, 0.4D, 0.02D);
+            }
+        } else if (mob instanceof AbstractSkeletonEntity) {
+            // Отскок: прыжок назад, чтобы держать дистанцию
+            if (mob.isOnGround()) {
+                l.leapX = Math.sin(rad) * 0.5D;
+                l.leapZ = -Math.cos(rad) * 0.5D;
+                l.leapTicks = 8;
+                l.leapVy = 0.38D;
+                l.leapLaunch = true;
+                l.cooldown = 50;
+                mob.level.playSound(null, mob.blockPosition(), SoundEvents.SKELETON_AMBIENT, SoundCategory.HOSTILE, 1.0F, 1.3F);
             }
         } else if (mob instanceof CreeperEntity) {
             explode(mob);

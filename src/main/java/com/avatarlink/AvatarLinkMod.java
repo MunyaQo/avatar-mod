@@ -1,13 +1,13 @@
 package com.avatarlink;
 
 import com.avatarlink.block.LinkPodBlock;
+import com.avatarlink.item.LinkPodItem;
 import com.avatarlink.item.SedativeItem;
 import com.avatarlink.net.Net;
 import net.minecraft.block.AbstractBlock;
 import net.minecraft.block.Block;
 import net.minecraft.block.SoundType;
 import net.minecraft.block.material.Material;
-import net.minecraft.item.BlockItem;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemGroup;
 import net.minecraftforge.eventbus.api.IEventBus;
@@ -26,10 +26,14 @@ public class AvatarLinkMod {
     public static final DeferredRegister<Item> ITEMS = DeferredRegister.create(ForgeRegistries.ITEMS, MODID);
 
     public static final RegistryObject<Block> LINK_POD = BLOCKS.register("link_pod",
-            () -> new LinkPodBlock(AbstractBlock.Properties.of(Material.METAL).strength(3.0F).sound(SoundType.METAL)));
+            () -> new LinkPodBlock(AbstractBlock.Properties.of(Material.METAL)
+                    .strength(3.0F)
+                    .sound(SoundType.METAL)
+                    .noOcclusion()
+                    .lightLevel(state -> state.getValue(LinkPodBlock.OPEN) ? 3 : 13)));
 
     public static final RegistryObject<Item> LINK_POD_ITEM = ITEMS.register("link_pod",
-            () -> new BlockItem(LINK_POD.get(), new Item.Properties().tab(ItemGroup.TAB_MISC)));
+            () -> new LinkPodItem(LINK_POD.get(), new Item.Properties().tab(ItemGroup.TAB_MISC)));
 
     public static final RegistryObject<Item> SEDATIVE = ITEMS.register("sedative",
             () -> new SedativeItem(new Item.Properties().tab(ItemGroup.TAB_MISC).stacksTo(16)));

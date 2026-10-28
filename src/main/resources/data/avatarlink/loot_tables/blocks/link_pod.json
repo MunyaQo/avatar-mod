@@ -1,10 +1,28 @@
 {
-  "type": "minecraft:block",
-  "pools": [
+ "type": "minecraft:block",
+ "pools": [
+  {
+   "rolls": 1,
+   "entries": [
     {
-      "rolls": 1,
-      "entries": [ { "type": "minecraft:item", "name": "avatarlink:link_pod" } ],
-      "conditions": [ { "condition": "minecraft:survives_explosion" } ]
+     "type": "minecraft:item",
+     "name": "avatarlink:link_pod",
+     "conditions": [
+      {
+       "condition": "minecraft:block_state_property",
+       "block": "avatarlink:link_pod",
+       "properties": {
+        "part": "head"
+       }
+      }
+     ]
     }
-  ]
+   ],
+   "conditions": [
+    {
+     "condition": "minecraft:survives_explosion"
+    }
+   ]
+  }
+ ]
 }

@@ -7,6 +7,7 @@ import java.util.function.Supplier;
 import net.minecraft.entity.player.ServerPlayerEntity;
 import net.minecraft.network.PacketBuffer;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.fml.DistExecutor;
 import net.minecraftforge.fml.network.NetworkEvent;
@@ -34,8 +35,8 @@ public final class Net {
         CHANNEL.registerMessage(id++, LinkStatePacket.class, LinkStatePacket::encode, LinkStatePacket::decode, LinkStatePacket::handle);
     }
 
-    public static void sendLinkState(ServerPlayerEntity player, int entityId) {
-        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new LinkStatePacket(entityId));
+    public static void sendLinkState(ServerPlayerEntity player, int entityId, BlockPos headPos) {
+        CHANNEL.send(PacketDistributor.PLAYER.with(() -> player), new LinkStatePacket(entityId, headPos));
     }
 
     /** Клиент -> сервер: ввод игрока, пока он в аватаре. */
@@ -141,25 +142,29 @@ public final class Net {
         }
     }
 
-    /** Сервер -> клиент: id моба, чьими глазами смотреть (-1 = связь закончена). */
+    /** Сервер -> клиент: id моба, чьими глазами смотреть (-1 = связь закончена), и головной блок капсулы. */
     public static final class LinkStatePacket {
         final int entityId;
+        final BlockPos headPos;
 
-        public LinkStatePacket(int entityId) {
+        public LinkStatePacket(int entityId, BlockPos headPos) {
             this.entityId = entityId;
+            this.headPos = headPos;
         }
 
         static void encode(LinkStatePacket m, PacketBuffer b) {
             b.writeInt(m.entityId);
+            b.writeBlockPos(m.headPos);
         }
 
         static LinkStatePacket decode(PacketBuffer b) {
-            return new LinkStatePacket(b.readInt());
+            return new LinkStatePacket(b.readInt(), b.readBlockPos());
         }
 
         static void handle(LinkStatePacket m, Supplier<NetworkEvent.Context> ctx) {
             NetworkEvent.Context c = ctx.get();
-            c.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT, () -> () -> ClientHandler.onLinkState(m.entityId)));
+            c.enqueueWork(() -> DistExecutor.unsafeRunWhenOn(Dist.CLIENT,
+                    () -> () -> ClientHandler.onLinkState(m.entityId, m.headPos)));
             c.setPacketHandled(true);
         }
     }

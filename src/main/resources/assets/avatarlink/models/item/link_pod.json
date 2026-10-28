@@ -1,1 +1,1 @@
-{ "parent": "avatarlink:block/link_pod" }
+{"parent": "minecraft:item/generated", "textures": {"layer0": "avatarlink:item/link_pod"}}

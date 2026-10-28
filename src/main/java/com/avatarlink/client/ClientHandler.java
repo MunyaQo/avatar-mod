@@ -4,15 +4,21 @@ import com.avatarlink.AvatarLinkMod;
 import com.avatarlink.net.Net;
 import com.mojang.blaze3d.matrix.MatrixStack;
 import com.mojang.blaze3d.systems.RenderSystem;
+import java.util.Optional;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.AbstractGui;
+import net.minecraft.client.renderer.RenderType;
+import net.minecraft.client.renderer.RenderTypeLookup;
 import net.minecraft.client.settings.KeyBinding;
 import net.minecraft.entity.Entity;
 import net.minecraft.entity.LivingEntity;
+import net.minecraft.entity.Pose;
 import net.minecraft.entity.player.PlayerEntity;
 import net.minecraft.item.ItemStack;
+import net.minecraft.potion.Effects;
 import net.minecraft.util.MovementInput;
 import net.minecraft.util.ResourceLocation;
+import net.minecraft.util.math.BlockPos;
 import net.minecraft.util.math.vector.Vector3d;
 import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
@@ -30,8 +36,8 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 import org.lwjgl.glfw.GLFW;
 
 /**
- * Клиентская часть: клавиши, камера "глазами моба", экран (хотбар, сердечки аватара)
- * и отправка ввода на сервер.
+ * Клиентская часть: клавиши, камера "глазами моба", экран (хотбар, сердечки аватара,
+ * красные края при ярости), тело игрока, лежащее в капсуле, и отправка ввода на сервер.
  */
 public final class ClientHandler {
     static final KeyBinding ABILITY_KEY = new KeyBinding("key.avatarlink.ability", GLFW.GLFW_KEY_R, "key.categories.avatarlink");
@@ -40,30 +46,26 @@ public final class ClientHandler {
 
     /** id моба, в которого мы вселены; -1 если связи нет. */
     private static int linkedEntityId = -1;
-    /** Куда смотрит неподвижное настоящее тело. */
-    private static float frozenYaw;
+    /** Головной блок капсулы, в которой лежит тело. */
+    private static BlockPos podHead = BlockPos.ZERO;
 
-    // сохранённые углы тела на время отрисовки
-    private static boolean frozenApplied;
-    private static float sBody;
-    private static float sBodyO;
-    private static float sHead;
-    private static float sHeadO;
-    private static float sPitch;
-    private static float sPitchO;
+    // сохранённое состояние тела на время отрисовки
+    private static boolean bodyOverridden;
+    private static Pose sPose;
+    private static Optional<BlockPos> sSleepPos = Optional.empty();
 
     private ClientHandler() {
     }
 
     /** Вызывается из сетевого пакета. */
-    public static void onLinkState(int entityId) {
+    public static void onLinkState(int entityId, BlockPos headPos) {
         linkedEntityId = entityId;
         Minecraft mc = Minecraft.getInstance();
         if (mc.player == null) {
             return;
         }
         if (entityId >= 0) {
-            frozenYaw = mc.player.yRot;
+            podHead = headPos;
             Vector3d m = mc.player.getDeltaMovement();
             mc.player.setDeltaMovement(0.0D, m.y, 0.0D);
         } else {
@@ -77,6 +79,8 @@ public final class ClientHandler {
         public static void clientSetup(FMLClientSetupEvent event) {
             ClientRegistry.registerKeyBinding(ABILITY_KEY);
             ClientRegistry.registerKeyBinding(EXIT_KEY);
+            // Стеклянная крышка капсулы полупрозрачная.
+            event.enqueueWork(() -> RenderTypeLookup.setRenderLayer(AvatarLinkMod.LINK_POD.get(), RenderType.translucent()));
         }
     }
 
@@ -166,7 +170,7 @@ public final class ClientHandler {
             }
         }
 
-        // --- неподвижное тело: на время отрисовки подменяем углы поворота
+        // --- настоящее тело лежит в капсуле: на время отрисовки включаем позу сна
 
         @SubscribeEvent
         public static void onRenderPlayerPre(RenderPlayerEvent.Pre event) {
@@ -175,37 +179,29 @@ public final class ClientHandler {
                 return;
             }
             PlayerEntity p = event.getPlayer();
-            sBody = p.yBodyRot;
-            sBodyO = p.yBodyRotO;
-            sHead = p.yHeadRot;
-            sHeadO = p.yHeadRotO;
-            sPitch = p.xRot;
-            sPitchO = p.xRotO;
-            p.yBodyRot = frozenYaw;
-            p.yBodyRotO = frozenYaw;
-            p.yHeadRot = frozenYaw;
-            p.yHeadRotO = frozenYaw;
-            p.xRot = 0.0F;
-            p.xRotO = 0.0F;
-            frozenApplied = true;
+            sPose = p.getPose();
+            sSleepPos = p.getSleepingPos();
+            p.setPose(Pose.SLEEPING);
+            p.setSleepingPos(podHead);
+            bodyOverridden = true;
         }
 
         @SubscribeEvent
         public static void onRenderPlayerPost(RenderPlayerEvent.Post event) {
-            if (!frozenApplied) {
+            if (!bodyOverridden) {
                 return;
             }
             PlayerEntity p = event.getPlayer();
-            p.yBodyRot = sBody;
-            p.yBodyRotO = sBodyO;
-            p.yHeadRot = sHead;
-            p.yHeadRotO = sHeadO;
-            p.xRot = sPitch;
-            p.xRotO = sPitchO;
-            frozenApplied = false;
+            p.setPose(sPose);
+            if (sSleepPos.isPresent()) {
+                p.setSleepingPos(sSleepPos.get());
+            } else {
+                p.clearSleepingPos();
+            }
+            bodyOverridden = false;
         }
 
-        // --- экран: хотбар и сердечки аватара (обычные ванильные пропадают, пока камера на мобе)
+        // --- экран: хотбар, сердечки аватара, красные края при ярости
 
         @SubscribeEvent
         public static void onOverlay(RenderGameOverlayEvent.Post event) {
@@ -219,8 +215,23 @@ public final class ClientHandler {
             MatrixStack ms = event.getMatrixStack();
             int w = mc.getWindow().getGuiScaledWidth();
             int h = mc.getWindow().getGuiScaledHeight();
+            if (mc.player.hasEffect(Effects.DAMAGE_BOOST)) {
+                drawRage(ms, w, h);
+            }
             drawHotbar(mc, ms, w, h);
             drawAvatarHearts(mc, ms, w, h);
+        }
+
+        private static void drawRage(MatrixStack ms, int w, int h) {
+            // Несколько слоёв красной рамки: чем ближе к краю, тем краснее.
+            int color = 0x30D01010;
+            for (int i = 1; i <= 6; i++) {
+                int t = i * 10;
+                AbstractGui.fill(ms, 0, 0, w, t, color);
+                AbstractGui.fill(ms, 0, h - t, w, h, color);
+                AbstractGui.fill(ms, 0, t, t, h - t, color);
+                AbstractGui.fill(ms, w - t, t, w, h - t, color);
+            }
         }
 
         private static void drawHotbar(Minecraft mc, MatrixStack ms, int w, int h) {

@@ -1,1 +1,64 @@
-{ "variants": { "": { "model": "avatarlink:block/link_pod" } } }
+{
+ "variants": {
+  "facing=south,open=true,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_open"
+  },
+  "facing=south,open=true,part=head": {
+   "model": "avatarlink:block/link_pod_head_open"
+  },
+  "facing=south,open=false,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_closed"
+  },
+  "facing=south,open=false,part=head": {
+   "model": "avatarlink:block/link_pod_head_closed"
+  },
+  "facing=west,open=true,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_open",
+   "y": 90
+  },
+  "facing=west,open=true,part=head": {
+   "model": "avatarlink:block/link_pod_head_open",
+   "y": 90
+  },
+  "facing=west,open=false,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_closed",
+   "y": 90
+  },
+  "facing=west,open=false,part=head": {
+   "model": "avatarlink:block/link_pod_head_closed",
+   "y": 90
+  },
+  "facing=north,open=true,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_open",
+   "y": 180
+  },
+  "facing=north,open=true,part=head": {
+   "model": "avatarlink:block/link_pod_head_open",
+   "y": 180
+  },
+  "facing=north,open=false,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_closed",
+   "y": 180
+  },
+  "facing=north,open=false,part=head": {
+   "model": "avatarlink:block/link_pod_head_closed",
+   "y": 180
+  },
+  "facing=east,open=true,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_open",
+   "y": 270
+  },
+  "facing=east,open=true,part=head": {
+   "model": "avatarlink:block/link_pod_head_open",
+   "y": 270
+  },
+  "facing=east,open=false,part=foot": {
+   "model": "avatarlink:block/link_pod_foot_closed",
+   "y": 270
+  },
+  "facing=east,open=false,part=head": {
+   "model": "avatarlink:block/link_pod_head_closed",
+   "y": 270
+  }
+ }
+}
